@@ -1,0 +1,12 @@
+--- a/processes.py
++++ b/processes.py
+@@ -74,7 +74,8 @@
+     proc = self.processes[id]
+     if proc.poll() is None:
+       try:
+-        proc.kill()
++        # deleted due to tendency to kill living processes
++        #proc.kill()
+       except OSError:
+         # Trap: [Errno 3] No such process
+         pass
