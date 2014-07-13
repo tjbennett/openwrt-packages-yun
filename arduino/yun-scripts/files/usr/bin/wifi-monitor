@@ -1,0 +1,121 @@
+#!/bin/sh
+
+## if the system is in Master Mode, end the script
+## only run when connected to a router
+##
+CHECK_HOST="http://www.machinetelemetry.com"
+
+connect_attempts=1
+sleep_time=5           # seconds of delay between tries
+CURL_TIMEOUT=3         # seconds to wait for curl response
+CURL_CODE="\"%{http_code}\""
+RESPONSE_CODE="\"200\""
+
+EIFACE="eth1"
+WIFACE="wlan0"
+IFC=/sbin/ifconfig
+IWC=/usr/sbin/iwconfig
+
+iface_eth_exists=""
+
+iface_exists=""
+iface_is_managed=""
+iface_has_ssid=""
+iface_is_access_point=""
+
+update_vars() {
+    iface_eth_exists=`/sbin/ifconfig eth1 | grep -q inet_addr`
+    echo $iface_eth_exists
+    
+    if [ -z "$iface_eth_exists" ];
+    then
+	echo "no eth"
+    	iface_eth_exists=0
+    else
+    	echo "eth here!"
+        iface_eth_exists=1
+    fi
+
+    iface_exists=`${IWC} ${WIFACE} 2>/dev/null`
+    echo $iface_exists
+                                   
+    if [ -z "$iface_exists" ]
+    then
+    	echo "no wlan"
+        iface_exists=0
+    else
+	echo "wlan exists"
+        iface_exists=1
+    fi
+                                                                
+    iface_has_no_ssid=`${IWC} ${WIFACE} | grep ESSID\:off\/any`
+    echo $iface_has_no_ssid
+    
+    if [ -z "$iface_has_no_ssid" ]
+    then
+    	echo "no ssid"
+        iface_has_no_ssid=0
+    else
+    	echo "ssid found"
+        iface_has_no_ssid=1
+    fi
+    
+    iface_is_access_point=`${IWC} ${WIFACE} | grep Mode\:Master`
+    echo $iface_is_access_point
+    
+    if [ -z "$iface_is_access_point" ]
+    then
+    	echo "no access point"
+        iface_is_access_point=0
+    else
+        iface_is_access_point=1
+    fi
+}
+
+sleep $sleep_time
+
+update_vars
+
+if [ $iface_is_access_point -gt 0 ];
+then
+    echo "exit stage left..."
+    exit 1
+else
+    echo "no access point..."
+fi
+             
+## at this point variables are set, system is not Access Point
+## System will only be in Master mode
+while true
+do
+    if [ $iface_eth_exists -eq 0 ]; then
+        ## if the wlan0 does not exist, 
+        ## reboot and try and re-establish wifi
+        if [ $iface_exists -eq 0 ]; then
+            echo -n "no wifi lan existing..."
+    	    echo "reboot 1"
+    	    /usr/bin/wifi-reset-and-reboot
+        ## wlan0 exists && no ssid == no connection
+        elif [ "$iface_has_no_ssid" != "" ]; then
+    	    echo "reboot 2"
+    	    /usr/bin/wifi-reset-and-reboot
+        fi
+        ## wlan0 exists && SSID 
+    fi    			                                                            
+
+    HTTPRESPONSE=$(curl -s -o /dev/null -m $CURL_TIMEOUT -w $CURL_CODE $CHECK_HOST)
+    	                                       
+    ## echo $HTTPRESPONSE
+    ## echo $RESPONSE_CODE
+    			                                                                            
+    if [ "$HTTPRESPONSE" !=  "$RESPONSE_CODE" ]; then
+        ## kill the world and restart
+        echo -n "kill and reboot."
+        /usr/bin/wifi-reset-and-reboot
+    fi
+    ## echo "sleep time"
+    sleep $sleep_time
+    ## check the variables for any changes in sleep period
+    update_vars
+
+done
